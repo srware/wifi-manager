@@ -1,2 +1,2 @@
-# wifi-manager
-A console based WiFi Manager for Intel IoT platforms.
+# WiFi Manager
+A console based WiFi Manager for Intel IoT platforms which leverages the Connman DBus API.
