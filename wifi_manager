@@ -176,10 +176,27 @@ class Agent(dbus.service.Object):
 		print "Cancel"
 
 def get_machine_id():
-    id_file = open('/etc/machine-id', 'r')
-    machine_id = id_file.readline()
-    id_file.close()
-    return machine_id.upper()
+    	id_file = open('/etc/machine-id', 'r')
+    	machine_id = id_file.readline()
+    	id_file.close()
+    	return machine_id.upper()
+
+def get_hostname():
+    	name_file = open('/etc/hostname', 'r')
+    	hostname = name_file.readline().strip()
+    	name_file.close()
+	hostname.replace(" ", "_")
+    	return hostname
+
+def get_platform():
+    	platform_file = open('/sys/class/dmi/id/board_name', 'r')
+    	platform = platform_file.readline()
+    	platform_file.close()
+	
+	if platform is "BODEGA BAY" or "SALT BAY":
+    		return "edison"
+
+    	return None
 
 def check_wifi():
 	for path,properties in manager.GetTechnologies():
@@ -210,7 +227,7 @@ def scan_services():
 			technology.Scan(timeout=20000)
 
 			# Retrieve services
-			services = manager.GetServices()
+			services = manager.GetServices(timeout=20000)
 
 			# Save to history
 			with open(SERVICE_HISTORY_PATH, 'w') as f:
@@ -231,7 +248,7 @@ def get_services():
 	# Scan WiFi services and return as normal	
 	else:
 		scan_services()
-		return manager.GetServices()
+		return manager.GetServices(timeout=20000)
 
 	return None
 
@@ -257,7 +274,11 @@ def connect_service(path):
 		mainloop.quit()
 		return
 	except dbus.DBusException, error:
-		print "%s: %s" % (error._dbus_error_name, error.message)
+		if "AlreadyConnected" in str(error):
+			print "This service is already connected!"
+		else:
+			print "%s: %s" % (error._dbus_error_name, error.message)
+
 		mainloop.quit()
 		return
 
@@ -311,56 +332,88 @@ def enable_tethering():
 
 	# Save WiFi services to history
 	scan_services()
-	
-    	# Check for override script and use if available to enable tethering (required for Edison)
-    	if os.path.isfile("/usr/bin/wifi-tethering"):
-		subprocess.call("/usr/bin/wifi-tethering enable", shell=True)
-		return
 
-	# Enable tethering normally
 	technologies = manager.GetTechnologies()
 	for (path, properties) in technologies:
-	    if properties["Type"] == "wifi":
-		technology = dbus.Interface(bus.get_object("net.connman", path),
-					"net.connman.Technology")
-
-		print "\n Enabling WiFi tethering...\n"
-
-		# Check SSID is set
-		if not "TetheringIdentifier" in properties:
-		    ssid = "IoT-Device-" + get_machine_id()
-	            technology.SetProperty("TetheringIdentifier", ssid)
-
-		# Check password is set
-		if not "TetheringPassphrase" in properties:
-		    technology.SetProperty("TetheringPassphrase", "password")
-
-		# Enable tethering
-		technology.SetProperty("Tethering", dbus.Boolean(1))
-
-    		print "Success"
-
-def disable_tethering():
-    	# Check for override script and use if available to enable tethering (required for Edison)
-    	if os.path.isfile("/usr/bin/wifi-tethering"):
-		subprocess.call("/usr/bin/wifi-tethering disable", shell=True)
-		return
-
-	# Disable tethering normally
-	technologies = manager.GetTechnologies()
-
-	for (path, properties) in technologies:
-	    if properties["Type"] == "wifi":
-		technology = dbus.Interface(bus.get_object("net.connman", path),
+	    	if properties["Type"] == "wifi":
+			technology = dbus.Interface(bus.get_object("net.connman", path),
 						"net.connman.Technology")
 
-		# Disable tethering
-		if properties["Tethering"] == dbus.Boolean(1):
-		    print "\n Disabling WiFi tethering...\n"
-		    technology.SetProperty("Tethering", dbus.Boolean(0))
-		else:
-		    print "Tethering already disabled!"
-		    return
+			print "\n Enabling WiFi tethering...\n"
+
+			# Check SSID is set
+			if not "TetheringIdentifier" in properties:
+		    		ssid = get_hostname() + "-" + get_machine_id()
+	            		technology.SetProperty("TetheringIdentifier", ssid)
+
+			# Check password is set
+			if not "TetheringPassphrase" in properties:
+		    		technology.SetProperty("TetheringPassphrase", "password")
+
+			# Edison
+			if get_platform() is "edison":
+				# Reload WiFi driver in AP mode
+				result = subprocess.call("modprobe -r bcm4334x", shell=True)
+				if(result != 0):
+					print "Error: Unable to remove WiFi module."
+					return
+
+				time.sleep(1)
+
+				result = subprocess.call("modprobe bcm4334x op_mode=2", shell=True)
+				if(result != 0):
+					print "Error: Unable to load WiFi module in AP mode."
+					return
+
+				time.sleep(2)
+
+			# Enable tethering
+			technology.SetProperty("Tethering", dbus.Boolean(1))
+
+			# Edison Fix
+			if get_platform() is "edison":
+				time.sleep(2)
+
+				# FIXME: ConnMan will try to add wlan0 to tether bridge but in Edison
+				# that currently fails with EBUSY.
+				result = subprocess.call("brctl addif tether wlan0", shell=True)
+				if(result != 0):
+					print "Error: Unable to bridge wireless interface."
+					return
+
+    			print "Success"
+
+def disable_tethering():
+
+	technologies = manager.GetTechnologies()
+
+	for (path, properties) in technologies:
+	    	if properties["Type"] == "wifi":
+			technology = dbus.Interface(bus.get_object("net.connman", path),
+							"net.connman.Technology")
+
+			# Disable tethering
+			if properties["Tethering"] == dbus.Boolean(1):
+		    		print "\n Disabling WiFi tethering...\n"
+		    		technology.SetProperty("Tethering", dbus.Boolean(0))
+			
+				# Edison
+				if get_platform() is "edison":
+					# Reload WiFi driver in normal mode
+					result = subprocess.call("modprobe -r bcm4334x", shell=True)
+					if(result != 0):
+						print "Error: Unable to remove WiFi module."
+						return
+
+					time.sleep(1)
+
+					result = subprocess.call("modprobe bcm4334x", shell=True)
+					if(result != 0):
+						print "Error: Unable to load WiFi module."
+						return
+			else:
+		    		print "Tethering already disabled!"
+		    		return
 
 def print_usage():
 	print "\nUsage:"
@@ -472,6 +525,9 @@ if __name__ == '__main__':
 			print_usage()
 
 	except dbus.DBusException, error:
-		print "Unable to connect to Connman service!"
+		if "ServiceUnknown" in str(error):
+			print "Error: Connman service is not currently running. Please enable Connman before using WiFi Manager!"
+		else:
+			print "%s: %s" % (error._dbus_error_name, error.message)
 		sys.exit()
 
