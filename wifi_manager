@@ -1,5 +1,11 @@
 #!/usr/bin/python
 
+#
+# Written by Scott Ware
+#
+# Version 0.0.2
+#
+
 import gobject
 import dbus
 import dbus.service
@@ -27,36 +33,42 @@ class LaunchBrowser(dbus.DBusException):
 
 class Agent(dbus.service.Object):
 	name = None
-	ssid = None
 	identity = None
 	passphrase = None
 	wpspin = None
 	username = None
 	password = None
 
-	def input_passphrase(self):
+	def get_identity(self):
 		response = {}
 
-		if not self.identity and not self.passphrase and not self.wpspin:
-			print "Service credentials requested, type cancel to cancel"
-			args = raw_input('Answer: ')
+		if not self.identity:
+			while 1:
+				identity = raw_input("Please enter identity: ")
 
-			for arg in args.split():
-				if arg.startswith("cancel"):
-					response["Error"] = arg
-				if arg.startswith("Identity="):
-					identity = arg.replace("Identity=", "", 1)
+				if (len(identity) > 0):
 					response["Identity"] = identity
-				if arg.startswith("Passphrase="):
-					passphrase = arg.replace("Passphrase=", "", 1)
+					break
+				else:
+					print "\n** Nothing entered. Please try again. **"
+		else:
+			response["Identity"] = self.identity
+
+		return response
+
+	def get_passphrase(self):
+		response = {}
+
+		if not self.passphrase and not self.wpspin:
+			while 1:
+				passphrase = raw_input("Please enter passphrase: ")
+
+				if (len(passphrase) < 8):
+					print "\n** Passphrase must be longer than 8 characters. Please try again. **"
+				else:
 					response["Passphrase"] = passphrase
-				if arg.startswith("WPS="):
-					wpspin = arg.replace("WPS=", "", 1)
-					response["WPS"] = wpspin
 					break
 		else:
-			if self.identity:
-				response["Identity"] = self.identity
 			if self.passphrase:
 				response["Passphrase"] = self.passphrase
 			if self.wpspin:
@@ -64,51 +76,54 @@ class Agent(dbus.service.Object):
 
 		return response
 
-	def input_username(self):
+	def get_username(self):
 		response = {}
 
-		if not self.username and not self.password:
-			print "User login requested, type cancel to cancel"
-			print "or browser to login through the browser by yourself."
-			args = raw_input('Answer: ')
+		if not self.username:
+			while 1:
+				username = raw_input("Please enter username: ")
 
-			for arg in args.split():
-				if arg.startswith("cancel") or arg.startswith("browser"):
-					response["Error"] = arg
-				if arg.startswith("Username="):
-					username = arg.replace("Username=", "", 1)
+				if (len(username) > 0):
 					response["Username"] = username
-				if arg.startswith("Password="):
-					password = arg.replace("Password=", "", 1)
-					response["Password"] = password
+					break
+				else:
+					print "\n** Nothing entered. Please try again. **"
 		else:
-			if self.username:
-				response["Username"] = self.username
-			if self.password:
-				response["Password"] = self.password
+			response["Username"] = self.username
 
 		return response
 
-	def input_hidden(self):
+	def get_password(self):
 		response = {}
 
-		if not self.name and not self.ssid:
-			args = raw_input('Answer ')
+		if not self.password:
+			while 1:
+				password = raw_input("Please enter password: ")
 
-			for arg in args.split():
-				if arg.startswith("Name="):
-					name = arg.replace("Name=", "", 1)
+				if (len(password) > 0):
+					response["Password"] = password
+					break
+				else:
+					print "\n** Nothing entered. Please try again. **"
+		else:
+			response["Password"] = self.password
+
+		return response
+
+	def get_name(self):
+		response = {}
+
+		if not self.name:
+			while 1:
+				name = raw_input("Please enter service name: ")
+
+				if (len(name) > 0):
 					response["Name"] = name
 					break
-				if arg.startswith("SSID="):
-					ssid = arg.replace("SSID", "", 1)
-					response["SSID"] = ssid
-					break
+				else:
+					print "\n** Nothing entered. Please try again. **"
 		else:
-			if self.name:
-				response["Name"] = self.name
-			if self.ssid:
-				response["SSID"] = self.ssid
+			response["Name"] = self.name
 
 		return response
 
@@ -121,11 +136,15 @@ class Agent(dbus.service.Object):
 		response = {}
 
 		if fields.has_key("Name"):
-			response.update(self.input_hidden())
+			response.update(self.get_name())
+		if fields.has_key("Identity"):
+			response.update(self.get_identity())
 		if fields.has_key("Passphrase"):
-			response.update(self.input_passphrase())
+			response.update(self.get_passphrase())
 		if fields.has_key("Username"):
-			response.update(self.input_username())
+			response.update(self.get_username())
+		if fields.has_key("Password"):
+			response.update(self.get_password())
 
 		if response.has_key("Error"):
 			if response["Error"] == "cancel":
@@ -177,9 +196,9 @@ class Agent(dbus.service.Object):
 
 def get_machine_id():
     	id_file = open('/etc/machine-id', 'r')
-    	machine_id = id_file.readline()
+    	machine_id = id_file.readline().strip().upper()
     	id_file.close()
-    	return machine_id.upper()
+    	return machine_id
 
 def get_hostname():
     	name_file = open('/etc/hostname', 'r')
@@ -224,10 +243,10 @@ def scan_services():
 			technology = dbus.Interface(bus.get_object("net.connman", path), "net.connman.Technology")
 			
 			# Scan for services
-			technology.Scan(timeout=20000)
+			technology.Scan(timeout=20)
 
 			# Retrieve services
-			services = manager.GetServices(timeout=20000)
+			services = manager.GetServices(timeout=20)
 
 			# Save to history
 			with open(SERVICE_HISTORY_PATH, 'w') as f:
@@ -236,7 +255,6 @@ def scan_services():
 
 
 def get_services():
-	scan_services()
 	# Get services from history if tethering is enabled
 	if is_tethering_enabled():
 		if os.path.isfile(SERVICE_HISTORY_PATH):
@@ -248,7 +266,7 @@ def get_services():
 	# Scan WiFi services and return as normal	
 	else:
 		scan_services()
-		return manager.GetServices(timeout=20000)
+		return manager.GetServices(timeout=20)
 
 	return None
 
@@ -269,13 +287,19 @@ def connect_service(path):
 		time.sleep(2)
 
 		# Attempt to connect service
-		service.Connect(timeout=60000)
+		os.system('clear')
+		print "Attempting connection to service..."
+		service.Connect(timeout=240)
 		print "\n Connected"
 		mainloop.quit()
 		return
 	except dbus.DBusException, error:
-		if "AlreadyConnected" in str(error):
+		if error.get_dbus_name() in ['net.connman.Error.AlreadyConnected']:
 			print "This service is already connected!"
+		elif error.get_dbus_name() in ['net.connman.Error.InProgress']:
+			print "This service is in the process of connecting. Please try again later if not connected shortly."
+		elif error.get_dbus_name() in ['net.connman.Error.OperationAborted']:
+			print "Unable to connect at this time. Please try again later."
 		else:
 			print "%s: %s" % (error._dbus_error_name, error.message)
 
@@ -295,11 +319,6 @@ def print_services(services):
 				autoconnect = " A"
 			else:
 				autoconnect = "  "
-
-			if properties["State"] == "ready":
-				state = "R"
-			elif properties["State"] == "online":
-				state = "O"
 		else:
 			favorite = " "
 
@@ -308,8 +327,7 @@ def print_services(services):
 		else:
 			name = "{" + properties["Type"] + "}"
 
-		print "%s%s%s %-26s %s" % (favorite, autoconnect, state,
-					       name, identifier)
+		print "%s%s %-26s %s" % (favorite, autoconnect, name, identifier)
 
 def is_tethering_enabled():
 	for path,properties in manager.GetTechnologies():
@@ -343,8 +361,8 @@ def enable_tethering():
 
 			# Check SSID is set
 			if not "TetheringIdentifier" in properties:
-		    		ssid = get_hostname() + "-" + get_machine_id()
-	            		technology.SetProperty("TetheringIdentifier", ssid)
+		    		ssid = get_hostname() + get_machine_id()
+	            		technology.SetProperty("TetheringIdentifier", ssid[:32])
 
 			# Check password is set
 			if not "TetheringPassphrase" in properties:
@@ -356,14 +374,14 @@ def enable_tethering():
 				result = subprocess.call("modprobe -r bcm4334x", shell=True)
 				if(result != 0):
 					print "Error: Unable to remove WiFi module."
-					return
+					return False
 
 				time.sleep(1)
 
 				result = subprocess.call("modprobe bcm4334x op_mode=2", shell=True)
 				if(result != 0):
 					print "Error: Unable to load WiFi module in AP mode."
-					return
+					return False
 
 				time.sleep(2)
 
@@ -379,9 +397,10 @@ def enable_tethering():
 				result = subprocess.call("brctl addif tether wlan0", shell=True)
 				if(result != 0):
 					print "Error: Unable to bridge wireless interface."
-					return
+					return False
 
     			print "Success"
+			return True
 
 def disable_tethering():
 
@@ -403,28 +422,29 @@ def disable_tethering():
 					result = subprocess.call("modprobe -r bcm4334x", shell=True)
 					if(result != 0):
 						print "Error: Unable to remove WiFi module."
-						return
+						return False
 
 					time.sleep(1)
 
 					result = subprocess.call("modprobe bcm4334x", shell=True)
 					if(result != 0):
 						print "Error: Unable to load WiFi module."
-						return
+						return False
+					
+					time.sleep(2)
 			else:
 		    		print "Tethering already disabled!"
-		    		return
+		    		
+			return True
 
 def print_usage():
 	print "\nUsage:"
 	print "For hidden service:"
-	print "%s Name=<hidden service name> [SSID=<hidden ssid>]" % (sys.argv[0])
+	print "%s Name=<hidden service name>" % (sys.argv[0])
 	print "For EAP/WPA input:"
 	print "%s Identity=<identity> Passphrase=<passphrase> WPS=<wpspin>" % (sys.argv[0])
 	print "For WISPr login, L2TP or PPTP input:"
 	print "%s Username=<username> Password=<password>" % (sys.argv[0])
-	print "For OpenConnect input:"
-	print "%s Cookie=<string>" % (sys.argv[0])
 	print "Help: %s help" % (sys.argv[0])
 	sys.exit(1)
 
@@ -458,6 +478,11 @@ if __name__ == '__main__':
 				print "Error: No service specified!"
 				print_usage()
 
+			# Make sure tethering is disabled
+			if is_tethering_enabled():
+				if not disable_tethering():
+					sys.exit(1)
+
 			# Check WiFi service exists
 			if not check_service(sys.argv[2]):
 				print "Error: Service doesn't exist!"
@@ -465,19 +490,20 @@ if __name__ == '__main__':
 
 			# Register and populate agent
 			object = Agent(bus, "/wifi_manager/agent")
+			object.name = sys.argv[2]
 
 			if len(sys.argv) > 3:
 				for arg in sys.argv[3:]:
-					if arg.startswith("Name="):
-						object.name = arg.replace("Name=", "", 1)
-					elif arg.startswith("SSID="):
-						object.ssid = arg.replace("SSID=", "", 1)
-					elif arg.startswith("Identity="):
+					if arg.startswith("Identity="):
 						object.identity = arg.replace("Identity=", "", 1)
 					elif arg.startswith("Passphrase="):
 						object.passphrase = arg.replace("Passphrase=", "", 1)
 					elif arg.startswith("WPS="):
 						object.wpspin = arg.replace("WPS=", "", 1)
+					elif arg.startswith("Username="):
+						object.username = arg.replace("Username=", "", 1)
+					elif arg.startswith("Password="):
+						object.password = arg.replace("Password=", "", 1)
 
 			manager.RegisterAgent("/wifi_manager/agent")
 		
@@ -525,7 +551,7 @@ if __name__ == '__main__':
 			print_usage()
 
 	except dbus.DBusException, error:
-		if "ServiceUnknown" in str(error):
+		if error.get_dbus_name() in ['net.connman.Error.ServiceUnknown']:
 			print "Error: Connman service is not currently running. Please enable Connman before using WiFi Manager!"
 		else:
 			print "%s: %s" % (error._dbus_error_name, error.message)
