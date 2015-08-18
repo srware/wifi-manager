@@ -16,6 +16,8 @@ import sys
 import time
 import json
 import subprocess
+import string
+import random
 from threading import Thread
 
 try:
@@ -38,6 +40,12 @@ class Agent(dbus.service.Object):
 	wpspin = None
 	username = None
 	password = None
+
+	@dbus.service.method("net.connman.Agent",
+					in_signature='', out_signature='')
+	def Release(self):
+		print("Agent Released!")
+		mainloop.quit()
 
 	def get_identity(self):
 		response = {}
@@ -131,7 +139,7 @@ class Agent(dbus.service.Object):
 					in_signature='oa{sv}',
 					out_signature='a{sv}')
 	def RequestInput(self, path, fields):
-		print "RequestInput (%s,%s)" % (path, fields)
+		# print "RequestInput (%s,%s)" % (path, fields)
 
 		response = {}
 
@@ -154,25 +162,9 @@ class Agent(dbus.service.Object):
 				raise LaunchBrowser("launch browser")
 				return
 
-		print "returning (%s)" % (response)
+		# print "returning (%s)" % (response)
 
 		return response
-
-	@dbus.service.method("net.connman.Agent",
-					in_signature='os',
-					out_signature='')
-	def RequestBrowser(self, path, url):
-		print "RequestBrowser (%s,%s)" % (path, url)
-
-		print "Please login through the given url in a browser"
-		print "Then press enter to accept or some text to cancel"
-
-		args = raw_input('> ')
-
-		if len(args) > 0:
-			raise Canceled("canceled")
-
-		return
 
 	@dbus.service.method("net.connman.Agent",
 					in_signature='os',
@@ -193,6 +185,9 @@ class Agent(dbus.service.Object):
 					in_signature='', out_signature='')
 	def Cancel(self):
 		print "Cancel"
+
+def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
+	return ''.join(random.choice(chars) for _ in range(size))
 
 def get_machine_id():
     	id_file = open('/etc/machine-id', 'r')
@@ -289,9 +284,9 @@ def connect_service(path):
 		# Attempt to connect service
 		os.system('clear')
 		print "Attempting connection to service..."
-		service.Connect(timeout=240)
+		service.Connect(timeout=60000)
 		print "\n Connected"
-		mainloop.quit()
+		#mainloop.quit()
 		return
 	except dbus.DBusException, error:
 		if error.get_dbus_name() in ['net.connman.Error.AlreadyConnected']:
@@ -300,6 +295,8 @@ def connect_service(path):
 			print "This service is in the process of connecting. Please try again later if not connected shortly."
 		elif error.get_dbus_name() in ['net.connman.Error.OperationAborted']:
 			print "Unable to connect at this time. Please try again later."
+		elif error.get_dbus_name() in ['net.connman.Error.InvalidArguments']:
+			print "Unable to connect to the service with the details provided. Please try again."
 		else:
 			print "%s: %s" % (error._dbus_error_name, error.message)
 
@@ -489,7 +486,8 @@ if __name__ == '__main__':
 				sys.exit(1)
 
 			# Register and populate agent
-			object = Agent(bus, "/wifi_manager/agent")
+			agent_id = "/wifi_manager/agent" + id_generator()
+			object = Agent(bus, agent_id)
 			object.name = sys.argv[2]
 
 			if len(sys.argv) > 3:
