@@ -212,7 +212,7 @@ def get_platform():
     	platform = platform_file.readline()
     	platform_file.close()
 	
-	if platform is "BODEGA BAY" or "SALT BAY":
+	if platform in ['BODEGA BAY\n', 'SALT BAY\n']:
     		return "edison"
 
     	return None
@@ -385,6 +385,13 @@ def enable_tethering():
 
 				time.sleep(2)
 
+				subprocess.call("rfkill unblock wlan", shell=True)
+
+				# Check WiFi is ready
+				if not check_wifi():
+					print "Error: Unable to re-initialise WiFi module."
+					return False
+
 			# Enable tethering
 			technology.SetProperty("Tethering", dbus.Boolean(1))
 
@@ -432,20 +439,28 @@ def disable_tethering():
 						return False
 					
 					time.sleep(2)
+
+					subprocess.call("rfkill unblock wlan", shell=True)
+
+					# Check WiFi is ready
+					if not check_wifi():
+						print "Error: Unable to re-initialise WiFi module."
+						return False
 			else:
 		    		print "Tethering already disabled!"
 		    		
 			return True
 
 def print_usage():
-	print "\nUsage:"
-	print "For hidden service:"
-	print "%s Name=<hidden service name>" % (sys.argv[0])
-	print "For EAP/WPA input:"
-	print "%s Identity=<identity> Passphrase=<passphrase> WPS=<wpspin>" % (sys.argv[0])
-	print "For WISPr login, L2TP or PPTP input:"
-	print "%s Username=<username> Password=<password>" % (sys.argv[0])
-	print "Help: %s help" % (sys.argv[0])
+	print "\nUsage:\n"
+	print "wifi_manager services: List available WiFi services."
+	print "\nwifi_manager connect [SERVICE_NAME]: Initialise connection to WiFi service."
+	print "\nFor EAP/WPA:"
+	print "wifi_manager connect [SERVICE_NAME] [Passphrase=<passphrase>]"
+	print "\nFor WISPr login, L2TP or PPTP:"
+	print "wifi_manager connect [SERVICE_NAME] [Username=<username>] [Password=<password>]"
+	print "\nwifi_manager tether [enable|disable|toggle]: Enable, disable or toggle WiFi tethering (AP Mode)."
+	print "\nwifi_manager help: Prints this usage guide.\n"
 	sys.exit(1)
 
 if __name__ == '__main__':
