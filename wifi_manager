@@ -180,6 +180,20 @@ class Agent(dbus.service.Object):
 		else:
 			return
 
+	@dbus.service.method("net.connman.Agent",
+					in_signature='os',
+					out_signature='')
+	def ReportPeerError(self, path, error):
+		print "ReportError %s, %s" % (path, error)
+		retry = raw_input("Retry service (yes/no): ")
+		if (retry == "yes"):
+			class Retry(dbus.DBusException):
+				_dbus_error_name = "net.connman.Agent.Error.Retry"
+
+			raise Retry("retry service")
+		else:
+			return
+
 
 	@dbus.service.method("net.connman.Agent",
 					in_signature='', out_signature='')
@@ -286,7 +300,7 @@ def connect_service(path):
 		print "Attempting connection to service..."
 		service.Connect(timeout=60000)
 		print "\n Connected"
-		#mainloop.quit()
+		mainloop.quit()
 		return
 	except dbus.DBusException, error:
 		if error.get_dbus_name() in ['net.connman.Error.AlreadyConnected']:
@@ -520,7 +534,7 @@ if __name__ == '__main__':
 					elif arg.startswith("Password="):
 						object.password = arg.replace("Password=", "", 1)
 
-			manager.RegisterAgent("/wifi_manager/agent")
+			manager.RegisterAgent(agent_id)
 		
 			# Start service connection thread
 			Thread(target=connect_service, args=("/net/connman/service/" + sys.argv[2],)).start()
