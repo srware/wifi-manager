@@ -27,168 +27,6 @@ except ImportError:
 
 SERVICE_HISTORY_PATH = "/etc/wifi_manager/services.json"
 
-class Canceled(dbus.DBusException):
-	_dbus_error_name = "net.connman.Error.Canceled"
-
-class LaunchBrowser(dbus.DBusException):
-	_dbus_error_name = "net.connman.Agent.Error.LaunchBrowser"
-
-class Agent(dbus.service.Object):
-	name = None
-	identity = None
-	passphrase = None
-	wpspin = None
-	username = None
-	password = None
-
-	@dbus.service.method("net.connman.Agent",
-					in_signature='', out_signature='')
-	def Release(self):
-		print("Agent Released!")
-		mainloop.quit()
-
-	def get_identity(self):
-		response = {}
-
-		if not self.identity:
-			while 1:
-				identity = raw_input("Please enter identity: ")
-
-				if (len(identity) > 0):
-					response["Identity"] = identity
-					break
-				else:
-					print "\n** Nothing entered. Please try again. **"
-		else:
-			response["Identity"] = self.identity
-
-		return response
-
-	def get_passphrase(self):
-		response = {}
-
-		if not self.passphrase and not self.wpspin:
-			while 1:
-				passphrase = raw_input("Please enter passphrase: ")
-
-				if (len(passphrase) < 8):
-					print "\n** Passphrase must be longer than 8 characters. Please try again. **"
-				else:
-					response["Passphrase"] = passphrase
-					break
-		else:
-			if self.passphrase:
-				response["Passphrase"] = self.passphrase
-			if self.wpspin:
-				response["WPS"] = self.wpspin
-
-		return response
-
-	def get_username(self):
-		response = {}
-
-		if not self.username:
-			while 1:
-				username = raw_input("Please enter username: ")
-
-				if (len(username) > 0):
-					response["Username"] = username
-					break
-				else:
-					print "\n** Nothing entered. Please try again. **"
-		else:
-			response["Username"] = self.username
-
-		return response
-
-	def get_password(self):
-		response = {}
-
-		if not self.password:
-			while 1:
-				password = raw_input("Please enter password: ")
-
-				if (len(password) > 0):
-					response["Password"] = password
-					break
-				else:
-					print "\n** Nothing entered. Please try again. **"
-		else:
-			response["Password"] = self.password
-
-		return response
-
-	def get_name(self):
-		response = {}
-
-		if not self.name:
-			while 1:
-				name = raw_input("Please enter service name: ")
-
-				if (len(name) > 0):
-					response["Name"] = name
-					break
-				else:
-					print "\n** Nothing entered. Please try again. **"
-		else:
-			response["Name"] = self.name
-
-		return response
-
-	@dbus.service.method("net.connman.Agent",
-					in_signature='oa{sv}',
-					out_signature='a{sv}')
-	def RequestInput(self, path, fields):
-		print "RequestInput (%s,%s)" % (path, fields)
-
-		response = {}
-
-		if fields.has_key("Name"):
-			response.update(self.get_name())
-		if fields.has_key("Identity"):
-			response.update(self.get_identity())
-		if fields.has_key("Passphrase"):
-			response.update(self.get_passphrase())
-		if fields.has_key("Username"):
-			response.update(self.get_username())
-		if fields.has_key("Password"):
-			response.update(self.get_password())
-
-		if response.has_key("Error"):
-			if response["Error"] == "cancel":
-				raise Canceled("canceled")
-				return
-			if response["Error"] == "browser":
-				raise LaunchBrowser("launch browser")
-				return
-
-		print "returning (%s)" % (response)
-		return dbus.Dictionary(response)
-
-	@dbus.service.method("net.connman.Agent",
-					in_signature='os',
-					out_signature='')
-	def ReportError(self, path, error):
-		print "ReportError %s, %s" % (path, error)
-		retry = raw_input("Retry service (yes/no): ")
-		if (retry == "yes"):
-			class Retry(dbus.DBusException):
-				_dbus_error_name = "net.connman.Agent.Error.Retry"
-
-			raise Retry("retry service")
-		else:
-			mainloop.quit()
-			return
-
-
-	@dbus.service.method("net.connman.Agent",
-					in_signature='', out_signature='')
-	def Cancel(self):
-		print "Cancel"
-
-def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
-	return ''.join(random.choice(chars) for _ in range(size))
-
 def get_machine_id():
     	id_file = open('/etc/machine-id', 'r')
     	machine_id = id_file.readline().strip().upper()
@@ -286,7 +124,6 @@ def connect_service(path):
 		print "Attempting connection to service..."
 		service.Connect(timeout=60000)
 		print "\n Connected"
-		mainloop.quit()
 		return
 	except dbus.DBusException, error:
 		if error.get_dbus_name() in ['net.connman.Error.AlreadyConnected']:
@@ -300,7 +137,6 @@ def connect_service(path):
 		else:
 			print "%s: %s" % (error._dbus_error_name, error.message)
 
-		mainloop.quit()
 		return
 
 def print_services(services):
@@ -472,7 +308,6 @@ if __name__ == '__main__':
 
 	try:
 		# Setup Connman DBus connection
-		dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 		bus = dbus.SystemBus()
 		manager = dbus.Interface(bus.get_object('net.connman', "/"),
 					'net.connman.Manager')
@@ -503,33 +338,17 @@ if __name__ == '__main__':
 				sys.exit(1)
 
 			# Register and populate agent
-			agent_id = "/wifi_manager/agent" + id_generator()
-			object = Agent(bus, agent_id)
+			agent_command = "wifi_agent "
 
 			if len(sys.argv) > 3:
 				for arg in sys.argv[3:]:
-					if arg.startswith("Name="):
-						object.name = arg.replace("Name=", "", 1)
-					elif arg.startswith("Identity="):
-						object.identity = arg.replace("Identity=", "", 1)
-					elif arg.startswith("Passphrase="):
-						object.passphrase = arg.replace("Passphrase=", "", 1)
-					elif arg.startswith("WPS="):
-						object.wpspin = arg.replace("WPS=", "", 1)
-					elif arg.startswith("Username="):
-						object.username = arg.replace("Username=", "", 1)
-					elif arg.startswith("Password="):
-						object.password = arg.replace("Password=", "", 1)
+					agent_command += arg + " "
 
-			manager.RegisterAgent(agent_id)
+			print agent_command
+			subprocess.Popen(agent_command, shell=True)
 		
-			# Start service connection thread
-			Thread(target=connect_service, args=("/net/connman/service/" + sys.argv[2],)).start()
-
-			# Start agent thread
-			mainloop = gobject.MainLoop()
-			GObject.threads_init()
-			mainloop.run()
+			# Start service connection
+			connect_service("/net/connman/service/" + sys.argv[2])
 
 		#
 		# Services
