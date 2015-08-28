@@ -3,8 +3,6 @@
 #
 # Written by Scott Ware
 #
-# Version 0.0.1
-#
 
 import gobject
 import dbus
@@ -176,21 +174,9 @@ class Agent(dbus.service.Object):
 def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
 	return ''.join(random.choice(chars) for _ in range(size))
 
-def print_usage():
-	print "\nUsage:\n"
-	print "wifi_manager services: List available WiFi services."
-	print "\nwifi_manager connect [SERVICE_NAME]: Initialise connection to WiFi service."
-	print "\nFor EAP/WPA:"
-	print "wifi_manager connect [SERVICE_NAME] [Passphrase=<passphrase>]"
-	print "\nFor WISPr login, L2TP or PPTP:"
-	print "wifi_manager connect [SERVICE_NAME] [Username=<username>] [Password=<password>]"
-	print "\nwifi_manager tether [enable|disable|toggle]: Enable, disable or toggle WiFi tethering (AP Mode)."
-	print "\nwifi_manager help: Prints this usage guide.\n"
-	sys.exit(1)
-
 if __name__ == '__main__':
-	if len(sys.argv) == 2 and sys.argv[1] == "help":
-		print_usage()
+
+	print sys.argv
 
 	try:
 		# Setup Connman DBus connection

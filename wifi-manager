@@ -3,7 +3,7 @@
 #
 # Written by Scott Ware
 #
-# Version 0.0.2
+# Version 0.0.3
 #
 
 import dbus
@@ -217,8 +217,16 @@ def enable_tethering():
 					print "Error: Unable to re-initialise WiFi module."
 					return False
 
+				time.sleep(2)
+
 			# Enable tethering
-			technology.SetProperty("Tethering", dbus.Boolean(1))
+			try:
+				technology.SetProperty("Tethering", dbus.Boolean(1))
+			except dbus.DBusException, error:
+				if error.get_dbus_name() in ['net.connman.Error.NotSupported']:
+					print "Error: Unable to start WiFi tethering at this time. Please try again later."
+				
+				return False
 
 			# Edison Fix
 			if get_platform() is "edison":
@@ -271,6 +279,8 @@ def disable_tethering():
 					if not check_wifi():
 						print "Error: Unable to re-initialise WiFi module."
 						return False
+
+					time.sleep(2)
 			else:
 		    		print "Tethering already disabled!"
 		    		
@@ -328,13 +338,13 @@ if __name__ == '__main__':
 				sys.exit(1)
 
 			# Register and populate agent
-			agent_command = ["wm-agent"]
+			agent_args = "wm-agent"
 
 			if len(sys.argv) > 3:
 				for arg in sys.argv[3:]:
-					agent_command.append(arg)
+					agent_args += " " + arg
 
-			agent = subprocess.Popen(agent_command, shell=True)
+			agent = subprocess.Popen(agent_args, shell=True)
 		
 			# Start service connection
 			connect_service("/net/connman/service/" + sys.argv[2])
