@@ -15,7 +15,7 @@ import json
 import subprocess
 import string
 
-SERVICE_HISTORY_PATH = "/etc/wifi_manager/services.json"
+SERVICE_HISTORY_PATH = "/etc/wifi-manager/services.json"
 
 def get_machine_id():
     	id_file = open('/etc/machine-id', 'r')
