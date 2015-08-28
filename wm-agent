@@ -10,20 +10,9 @@ import gobject
 import dbus
 import dbus.service
 import dbus.mainloop.glib
-import os
-import io
 import sys
-import time
-import json
-import subprocess
 import string
 import random
-from threading import Thread
-
-try:
-    from gi.repository import GObject
-except ImportError:
-    import gobject as GObject
 
 class Canceled(dbus.DBusException):
 	_dbus_error_name = "net.connman.Error.Canceled"
@@ -137,7 +126,7 @@ class Agent(dbus.service.Object):
 					in_signature='oa{sv}',
 					out_signature='a{sv}')
 	def RequestInput(self, path, fields):
-		print "RequestInput (%s,%s)" % (path, fields)
+		# print "RequestInput (%s,%s)" % (path, fields)
 
 		response = {}
 
@@ -160,7 +149,7 @@ class Agent(dbus.service.Object):
 				raise LaunchBrowser("launch browser")
 				return
 
-		print "returning (%s)" % (response)
+		# print "returning (%s)" % (response)
 		return dbus.Dictionary(response)
 
 	@dbus.service.method("net.connman.Agent",
@@ -214,8 +203,8 @@ if __name__ == '__main__':
 		agent_id = "/wifi_manager/agent" + id_generator()
 		object = Agent(bus, agent_id)
 
-		if len(sys.argv) > 2:
-			for arg in sys.argv[3:]:
+		if len(sys.argv) > 1:
+			for arg in sys.argv[1:]:
 				if arg.startswith("Name="):
 					object.name = arg.replace("Name=", "", 1)
 				elif arg.startswith("Identity="):
@@ -231,7 +220,7 @@ if __name__ == '__main__':
 
 		manager.RegisterAgent(agent_id)
 
-		# Start agent thread
+		# Start agent
 		mainloop = gobject.MainLoop()
 		mainloop.run()
 

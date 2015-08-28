@@ -1,4 +1,5 @@
 #!/bin/sh
 
-rm -rf /etc/wifi_manager
-rm /usr/bin/wifi_manager
+rm -rf /etc/wifi-manager
+rm /usr/bin/wifi-manager
+rm /usr/bin/wm-agent
