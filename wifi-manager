@@ -176,13 +176,18 @@ def enable_tethering():
 	# Save WiFi services to history
 	scan_services()
 
+	print "\n Enabling WiFi tethering...\n"
+
+	# Edison
+	if get_platform() is "edison":
+		if not reload_edison_wifi_interface(True):
+			return False
+
 	technologies = manager.GetTechnologies()
 	for (path, properties) in technologies:
 	    	if properties["Type"] == "wifi":
 			technology = dbus.Interface(bus.get_object("net.connman", path),
 						"net.connman.Technology")
-
-			print "\n Enabling WiFi tethering...\n"
 
 			# Check SSID is set
 			if not "TetheringIdentifier" in properties:
@@ -193,38 +198,16 @@ def enable_tethering():
 			if not "TetheringPassphrase" in properties:
 		    		technology.SetProperty("TetheringPassphrase", "password")
 
-			# Edison
-			if get_platform() is "edison":
-				# Reload WiFi driver in AP mode
-				result = subprocess.call("modprobe -r bcm4334x", shell=True)
-				if(result != 0):
-					print "Error: Unable to remove WiFi module."
-					return False
-
-				time.sleep(1)
-
-				result = subprocess.call("modprobe bcm4334x op_mode=2", shell=True)
-				if(result != 0):
-					print "Error: Unable to load WiFi module in AP mode."
-					return False
-
-				time.sleep(2)
-
-				subprocess.call("rfkill unblock wlan", shell=True)
-
-				# Check WiFi is ready
-				if not check_wifi():
-					print "Error: Unable to re-initialise WiFi module."
-					return False
-
-				time.sleep(2)
-
 			# Enable tethering
 			try:
 				technology.SetProperty("Tethering", dbus.Boolean(1))
 			except dbus.DBusException, error:
 				if error.get_dbus_name() in ['net.connman.Error.NotSupported']:
 					print "Error: Unable to start WiFi tethering at this time. Please try again later."
+
+				# Reload WiFi interface in normal mode on Edison
+				if get_platform() is "edison":
+					reload_edison_wifi_interface(False)
 				
 				return False
 
@@ -237,6 +220,7 @@ def enable_tethering():
 				result = subprocess.call("brctl addif tether wlan0", shell=True)
 				if(result != 0):
 					print "Error: Unable to bridge wireless interface."
+					reload_edison_wifi_interface(False)
 					return False
 
     			print "Success"
@@ -258,33 +242,46 @@ def disable_tethering():
 			
 				# Edison
 				if get_platform() is "edison":
-					# Reload WiFi driver in normal mode
-					result = subprocess.call("modprobe -r bcm4334x", shell=True)
-					if(result != 0):
-						print "Error: Unable to remove WiFi module."
-						return False
-
-					time.sleep(1)
-
-					result = subprocess.call("modprobe bcm4334x", shell=True)
-					if(result != 0):
-						print "Error: Unable to load WiFi module."
+					if not reload_edison_wifi_interface(False):
 						return False
 					
-					time.sleep(2)
-
-					subprocess.call("rfkill unblock wlan", shell=True)
-
-					# Check WiFi is ready
-					if not check_wifi():
-						print "Error: Unable to re-initialise WiFi module."
-						return False
-
-					time.sleep(2)
 			else:
 		    		print "Tethering already disabled!"
 		    		
 			return True
+
+def reload_edison_wifi_interface(tethering):
+
+	# Reload WiFi driver in normal mode
+	result = subprocess.call("modprobe -r bcm4334x", shell=True)
+	if(result != 0):
+		print "Error: Unable to remove WiFi module."
+		return False
+
+	time.sleep(1)
+
+	if(tethering):
+		result = subprocess.call("modprobe bcm4334x op_mode=2", shell=True)
+		if(result != 0):
+			print "Error: Unable to load WiFi module in AP mode."
+			return False
+	else:
+		result = subprocess.call("modprobe bcm4334x", shell=True)
+		if(result != 0):
+			print "Error: Unable to load WiFi module."
+			return False
+				
+	time.sleep(2)
+
+	subprocess.call("rfkill unblock wlan", shell=True)
+
+	# Check WiFi is ready
+	if not check_wifi():
+		print "Error: Unable to re-initialise WiFi module."
+		return False
+
+	time.sleep(2)
+	return True
 
 def print_usage():
 	print "\nUsage:\n"
