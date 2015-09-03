@@ -64,18 +64,22 @@ def scan_services():
 	for path,properties in manager.GetTechnologies():
 		if properties["Type"] == "wifi":
 			technology = dbus.Interface(bus.get_object("net.connman", path), "net.connman.Technology")
-			
-			# Scan for services
-			technology.Scan(timeout=20)
 
-			# Retrieve services
-			services = manager.GetServices(timeout=20)
+			try:
+				# Scan for services
+				technology.Scan(timeout=20)
 
-			# Save to history
-			with open(SERVICE_HISTORY_PATH, 'w') as f:
-  				json.dump(parse_services(services), f, skipkeys=True)
-				f.close()
+				# Retrieve services
+				services = manager.GetServices(timeout=20)
 
+				# Save to history
+				with open(SERVICE_HISTORY_PATH, 'w') as f:
+  					json.dump(parse_services(services), f, skipkeys=True)
+					f.close()
+
+			except dbus.DBusException, error:
+				if error.get_dbus_name() in ['org.freedesktop.DBus.Error.NoReply']:
+					print "Error: Unable to scan for services at this time. Please try again later."
 
 def get_services():
 	# Get services from history if tethering is enabled

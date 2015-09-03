@@ -11,6 +11,7 @@ import dbus.mainloop.glib
 import sys
 import string
 import random
+import time
 
 class Canceled(dbus.DBusException):
 	_dbus_error_name = "net.connman.Error.Canceled"
@@ -46,6 +47,7 @@ class Agent(dbus.service.Object):
 					print "\n** Nothing entered. Please try again. **"
 		else:
 			response["Identity"] = self.identity
+			time.sleep(2)
 
 		return response
 
@@ -66,6 +68,7 @@ class Agent(dbus.service.Object):
 				response["Passphrase"] = self.passphrase
 			if self.wpspin:
 				response["WPS"] = self.wpspin
+			time.sleep(2)
 
 		return response
 
@@ -83,6 +86,7 @@ class Agent(dbus.service.Object):
 					print "\n** Nothing entered. Please try again. **"
 		else:
 			response["Username"] = self.username
+			time.sleep(2)
 
 		return response
 
@@ -100,6 +104,7 @@ class Agent(dbus.service.Object):
 					print "\n** Nothing entered. Please try again. **"
 		else:
 			response["Password"] = self.password
+			time.sleep(2)
 
 		return response
 
@@ -117,6 +122,7 @@ class Agent(dbus.service.Object):
 					print "\n** Nothing entered. Please try again. **"
 		else:
 			response["Name"] = self.name
+			time.sleep(2)
 
 		return response
 
@@ -175,8 +181,6 @@ def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
 	return ''.join(random.choice(chars) for _ in range(size))
 
 if __name__ == '__main__':
-
-	print sys.argv
 
 	try:
 		# Setup Connman DBus connection
