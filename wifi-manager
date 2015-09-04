@@ -3,7 +3,7 @@
 #
 # Written by Scott Ware
 #
-# Version 0.0.4
+# Version 0.0.5
 #
 
 import dbus
