@@ -17,11 +17,29 @@ import string
 
 SERVICE_HISTORY_PATH = "/etc/wifi-manager/services.json"
 
+EDISON_SERIAL_NUMBER_PATH = "/factory/serial_number"
+DEFAULT_SERIAL_NUMBER_PATH = "/sys/class/dmi/id/board_serial"
+
 def get_machine_id():
     	id_file = open('/etc/machine-id', 'r')
     	machine_id = id_file.readline().strip().upper()
     	id_file.close()
     	return machine_id
+
+def get_serial_number():
+	if get_platform() is "edison":
+		if os.path.isfile(EDISON_SERIAL_NUMBER_PATH):
+			serial_num_file = open(EDISON_SERIAL_NUMBER_PATH, 'r')
+    			serial_num = serial_num_file.readline().strip().upper()
+    			serial_num_file.close()
+		else:
+			serial_num = get_machine_id()
+	else:
+    		serial_num_file = open(DEFAULT_SERIAL_NUMBER_PATH, 'r')
+    		serial_num = serial_num_file.readline().strip().upper()
+    		serial_num_file.close()
+
+    	return serial_num
 
 def get_hostname():
     	name_file = open('/etc/hostname', 'r')
@@ -195,7 +213,7 @@ def enable_tethering():
 
 			# Check SSID is set
 			if not "TetheringIdentifier" in properties:
-		    		ssid = get_hostname() + get_machine_id()
+		    		ssid = get_hostname() + "_" + get_serial_number()
 	            		technology.SetProperty("TetheringIdentifier", ssid[:32])
 
 			# Check password is set
