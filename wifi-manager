@@ -17,30 +17,6 @@ import string
 
 SERVICE_HISTORY_PATH = "/etc/wifi-manager/services.json"
 
-EDISON_SERIAL_NUMBER_PATH = "/factory/serial_number"
-DEFAULT_SERIAL_NUMBER_PATH = "/sys/class/dmi/id/board_serial"
-
-def get_machine_id():
-    	id_file = open('/etc/machine-id', 'r')
-    	machine_id = id_file.readline().strip().upper()
-    	id_file.close()
-    	return machine_id
-
-def get_serial_number():
-	if get_platform() is "edison":
-		if os.path.isfile(EDISON_SERIAL_NUMBER_PATH):
-			serial_num_file = open(EDISON_SERIAL_NUMBER_PATH, 'r')
-    			serial_num = serial_num_file.readline().strip().upper()
-    			serial_num_file.close()
-		else:
-			serial_num = get_machine_id()
-	else:
-    		serial_num_file = open(DEFAULT_SERIAL_NUMBER_PATH, 'r')
-    		serial_num = serial_num_file.readline().strip().upper()
-    		serial_num_file.close()
-
-    	return serial_num
-
 def get_hostname():
     	name_file = open('/etc/hostname', 'r')
     	hostname = name_file.readline().strip()
@@ -213,7 +189,7 @@ def enable_tethering():
 
 			# Check SSID is set
 			if not "TetheringIdentifier" in properties:
-		    		ssid = get_hostname() + "_" + get_serial_number()
+		    		ssid = get_hostname()
 	            		technology.SetProperty("TetheringIdentifier", ssid[:32])
 
 			# Check password is set
@@ -281,7 +257,7 @@ def reload_edison_wifi_interface(tethering):
 		print "Error: Unable to remove WiFi module."
 		return False
 
-	time.sleep(1)
+	time.sleep(2)
 
 	if(tethering):
 		result = subprocess.call("modprobe bcm4334x op_mode=2", shell=True)
@@ -294,16 +270,17 @@ def reload_edison_wifi_interface(tethering):
 			print "Error: Unable to load WiFi module."
 			return False
 				
-	time.sleep(2)
+	time.sleep(4)
 
 	subprocess.call("rfkill unblock wlan", shell=True)
+
+	time.sleep(2)
 
 	# Check WiFi is ready
 	if not check_wifi():
 		print "Error: Unable to re-initialise WiFi module."
 		return False
 
-	time.sleep(2)
 	return True
 
 def print_usage():

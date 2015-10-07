@@ -47,7 +47,7 @@ class Agent(dbus.service.Object):
 					print "\n** Nothing entered. Please try again. **"
 		else:
 			response["Identity"] = self.identity
-			time.sleep(2)
+			time.sleep(4)
 
 		return response
 
@@ -68,7 +68,7 @@ class Agent(dbus.service.Object):
 				response["Passphrase"] = self.passphrase
 			if self.wpspin:
 				response["WPS"] = self.wpspin
-			time.sleep(2)
+			time.sleep(4)
 
 		return response
 
@@ -86,7 +86,7 @@ class Agent(dbus.service.Object):
 					print "\n** Nothing entered. Please try again. **"
 		else:
 			response["Username"] = self.username
-			time.sleep(2)
+			time.sleep(4)
 
 		return response
 
@@ -104,7 +104,7 @@ class Agent(dbus.service.Object):
 					print "\n** Nothing entered. Please try again. **"
 		else:
 			response["Password"] = self.password
-			time.sleep(2)
+			time.sleep(4)
 
 		return response
 
@@ -122,7 +122,7 @@ class Agent(dbus.service.Object):
 					print "\n** Nothing entered. Please try again. **"
 		else:
 			response["Name"] = self.name
-			time.sleep(2)
+			time.sleep(4)
 
 		return response
 
