@@ -47,6 +47,21 @@ def check_wifi():
 			return True
 	return False
 
+def cycle_wifi():
+	for path,properties in manager.GetTechnologies():
+		if properties["Type"] == "wifi":
+			technology = dbus.Interface(bus.get_object("net.connman", path), "net.connman.Technology")
+
+			# Cycle WiFi
+			if properties["Powered"] == dbus.Boolean(1):
+				technology.SetProperty("Powered", dbus.Boolean(0))
+				time.sleep(2)
+				technology.SetProperty("Powered", dbus.Boolean(1))
+				time.sleep(2)
+			
+			return True
+	return False
+
 # Parses services to ensure they are suitable for JSON encoding
 def parse_services(services):
 	for path,properties in services:
@@ -183,9 +198,9 @@ def enable_tethering():
 
 	technologies = manager.GetTechnologies()
 	for (path, properties) in technologies:
-	    	if properties["Type"] == "wifi":
+		if properties["Type"] == "wifi":
 			technology = dbus.Interface(bus.get_object("net.connman", path),
-						"net.connman.Technology")
+								"net.connman.Technology")
 
 			# Check SSID is set
 			if not "TetheringIdentifier" in properties:
@@ -202,16 +217,21 @@ def enable_tethering():
 			except dbus.DBusException, error:
 				if error.get_dbus_name() in ['net.connman.Error.NotSupported']:
 					print "Error: Unable to start WiFi tethering at this time. Please try again later."
+					# Reload WiFi interface in normal mode on Edison
+					if get_platform() is "edison":
+						reload_edison_wifi_interface(False)
+	
+					return False
 
-				# Reload WiFi interface in normal mode on Edison
-				if get_platform() is "edison":
-					reload_edison_wifi_interface(False)
-				
+			time.sleep(2)
+
+			# Check the 'tether' interface has initialised
+			if not os.path.exists("/sys/class/net/tether"):
+				print "Error: WiFi tethering failed to start. Please try again later."
 				return False
 
 			# Edison Fix
 			if get_platform() is "edison":
-				time.sleep(2)
 
 				# FIXME: ConnMan will try to add wlan0 to tether bridge but in Edison
 				# that currently fails with EBUSY.
@@ -221,8 +241,8 @@ def enable_tethering():
 					reload_edison_wifi_interface(False)
 					return False
 
-    			print "Success"
-			return True
+    	print "Success"
+	return True
 
 def disable_tethering():
 
@@ -238,13 +258,13 @@ def disable_tethering():
 		    		print "\n Disabling WiFi tethering...\n"
 		    		technology.SetProperty("Tethering", dbus.Boolean(0))
 			
-				# Edison
+				# Edison Fix
 				if get_platform() is "edison":
 					if not reload_edison_wifi_interface(False):
 						return False
-					
 			else:
 		    		print "Tethering already disabled!"
+				return False
 		    		
 			print "Success"
 			return True
@@ -269,17 +289,11 @@ def reload_edison_wifi_interface(tethering):
 		if(result != 0):
 			print "Error: Unable to load WiFi module."
 			return False
-				
-	time.sleep(4)
-
-	subprocess.call("rfkill unblock wlan", shell=True)
 
 	time.sleep(2)
 
-	# Check WiFi is ready
-	if not check_wifi():
-		print "Error: Unable to re-initialise WiFi module."
-		return False
+	# Cycle WiFi Interface
+	cycle_wifi()
 
 	return True
 
