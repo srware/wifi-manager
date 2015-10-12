@@ -3,7 +3,7 @@
 #
 # Written by Scott Ware
 #
-# Version 0.0.6
+# Version 0.0.7
 #
 
 import dbus
@@ -241,8 +241,10 @@ def enable_tethering():
 					reload_edison_wifi_interface(False)
 					return False
 
-    	print "Success"
-	return True
+		    	print "Success"
+			return True
+
+	return False
 
 def disable_tethering():
 
@@ -268,6 +270,8 @@ def disable_tethering():
 		    		
 			print "Success"
 			return True
+
+	return False
 
 def reload_edison_wifi_interface(tethering):
 
