@@ -67,10 +67,18 @@ def cycle_wifi():
 
 # Parses services to ensure they are suitable for JSON encoding
 def parse_services(services):
-	for path,properties in services:
+
+	# Extract WiFi Services	
+	parsedServices = []
+	
+	for service in services:
+		if service[1]["Type"] == "wifi":
+			parsedServices.append(service)
+
+	for path,properties in parsedServices:
 		properties["Strength"] = int(properties["Strength"])
 
-	return services
+	return parsedServices
 
 def scan_services():
 	for path,properties in manager.GetTechnologies():
@@ -83,15 +91,19 @@ def scan_services():
 
 				# Retrieve services
 				services = manager.GetServices(timeout=20)
+				services = parse_services(services)
 
 				# Save to history
 				with open(SERVICE_HISTORY_PATH, 'w') as f:
-  					json.dump(parse_services(services), f, skipkeys=True)
+  					json.dump(services, f, skipkeys=True)
 					f.close()
+
+				return services
 
 			except dbus.DBusException, error:
 				if error.get_dbus_name() in ['org.freedesktop.DBus.Error.NoReply']:
 					print "Error: Unable to scan for services at this time. Please try again later."
+					return []
 
 def get_services():
 	# Get services from history if tethering is enabled
@@ -104,10 +116,7 @@ def get_services():
 	
 	# Scan WiFi services and return as normal	
 	else:
-		scan_services()
-		return manager.GetServices(timeout=20)
-
-	return None
+		return scan_services()
 
 
 def check_service(service):
