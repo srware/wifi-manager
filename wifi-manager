@@ -11,6 +11,7 @@ import os
 import io
 import sys
 import signal
+import atexit
 import time
 import json
 import subprocess
@@ -19,15 +20,24 @@ import codecs
 
 VERSION = "0.0.8"
 SERVICE_HISTORY_PATH = "/etc/wifi-manager/services.json"
+PID_PATH = "/etc/wifi-manager/wm.pid"
+
+TIMEOUT = 60000
 
 sys.stdout = codecs.getwriter('utf-8')(sys.stdout)
 
-def signal_handler(signal, frame):
+def on_exit():
 	# Ensure agent gets killed
         if agent is not None:
-		agent.terminate()
+		agent.kill()
 
-        sys.exit(0)
+	# Cancel service connection
+	if current_service is not None:
+		current_service.Disconnect()
+
+	# Remove PID file
+	if os.path.exists(PID_PATH):
+		os.remove(PID_PATH)
 
 def get_hostname():
     	name_file = open('/etc/hostname', 'r')
@@ -152,9 +162,22 @@ def check_service(service):
 
 	return False
 
+def attempt_connect_services(services):
+	os.system('clear')
+		
+	# Attempt service connection
+	for service in services:
+		print "Attempting to connect to " + service[1]["Name"] + "..."
+
+		if connect_service(service[0], True):
+			print "\n Connected"
+			return True
+
+	return False
+
 def connect_service(path, quiet):
 	try:
-		service = dbus.Interface(bus.get_object("net.connman", path),
+		current_service = dbus.Interface(bus.get_object("net.connman", path),
 						"net.connman.Service")
 		time.sleep(2)
 
@@ -163,7 +186,7 @@ def connect_service(path, quiet):
 			os.system('clear')
 			print "Attempting connection to service..."
 
-		service.Connect(timeout=60000)
+		current_service.Connect(timeout=TIMEOUT)
 
 		if not quiet:
 			print "\n Connected"
@@ -186,6 +209,7 @@ def connect_service(path, quiet):
 			if not quiet:
 				print "%s: %s" % (error._dbus_error_name, error.message)
 
+		current_service = None
 		return False
 
 def print_services(services):
@@ -358,7 +382,7 @@ def print_usage():
 	print "\nwifi-manager tether [enable|disable|toggle]: Enable, disable or toggle WiFi tethering (AP Mode)."
 	print "\nwifi-manager help: Prints this usage guide.\n"
 	print "\nwifi-manager version: Display version.\n"
-	sys.exit(1)
+	sys.exit()
 
 if __name__ == '__main__':
 
@@ -370,11 +394,16 @@ if __name__ == '__main__':
 		print_usage()
 
 	if sys.argv[1] == "version":
-		print "\nVersion: $VERSION"
+		print "\nVersion: " + VERSION + "\n"
+		sys.exit()
 
 	try:
-		# Setup Connman DBus connection
+		# Setup Variables
 		agent = None
+		current_service = None
+		DEVNULL = open(os.devnull, 'wb')
+
+		# Setup Connman DBus connection
 		bus = dbus.SystemBus()
 		manager = dbus.Interface(bus.get_object('net.connman', "/"),
 					'net.connman.Manager')
@@ -382,7 +411,16 @@ if __name__ == '__main__':
 		# Check WiFi
 		if not check_wifi():
 			print "Error: WiFi not found on this device!"
-			sys.exit(1)
+			sys.exit()
+
+		# Register cleanup handlers
+		atexit.register(on_exit)
+
+		# Create PID file
+		with open(PID_PATH, 'w') as f:
+  			f.write(str(os.getpid()))
+			f.close()
+
 
 		#
 		# Auto Connect
@@ -393,7 +431,7 @@ if __name__ == '__main__':
 			# Make sure tethering is disabled
 			if is_tethering_enabled():
 				if not disable_tethering():
-					sys.exit(1)
+					sys.exit()
 
 			# Get list of suitable WiFi services
 			services = scan_services()
@@ -401,34 +439,22 @@ if __name__ == '__main__':
 
 			if not services:
 				print "Unable to detect any suitable auto-connect access points at this time!"
-				sys.exit(1)
+				sys.exit()
 
 			# Register and populate agent
 			agent_args = "wm-agent WPS="
-			agent = subprocess.Popen(agent_args, shell=True)
+			agent = subprocess.Popen(agent_args, stderr=DEVNULL, shell=True)
 
-			# Initialise signal handler to handle cleanup
-			signal.signal(signal.SIGINT, signal_handler)
-
-			os.system('clear')
-		
-			# Attempt service connection
-			for service in services:
-				print "Attempting to connect to " + service[1]["name"] + "..."
-
-				if connect_service(service[0], True):
-					print "\n Connected"
-					return
-					
-
-			# Terminate Agent
-			agent.terminate()
+			# Attempt to connect to services
+			TIMEOUT = 30
+			if not attempt_connect_services(services):
+				print "\nUnable to auto connect to access point at this time!"
 
 		#
 		# Connect
 		#
 
-		if sys.argv[1] == "connect":
+		elif sys.argv[1] == "connect":
 			# Check service argument
 			if (len(sys.argv) < 3):
 				print "Error: No service specified!"
@@ -437,12 +463,12 @@ if __name__ == '__main__':
 			# Make sure tethering is disabled
 			if is_tethering_enabled():
 				if not disable_tethering():
-					sys.exit(1)
+					sys.exit()
 
 			# Check WiFi service exists
 			if not check_service(sys.argv[2]):
 				print "Error: Service doesn't exist!"
-				sys.exit(1)
+				sys.exit()
 
 			# Register and populate agent
 			agent_args = "wm-agent"
@@ -450,17 +476,11 @@ if __name__ == '__main__':
 			if len(sys.argv) > 3:
 				for arg in sys.argv[3:]:
 					agent_args += " " + arg
-
-			agent = subprocess.Popen(agent_args, shell=True)
-
-			# Initialise signal handler to handle cleanup
-			signal.signal(signal.SIGINT, signal_handler)
+			
+			agent = subprocess.Popen(agent_args, stderr=DEVNULL, shell=True)
 		
 			# Start service connection
 			connect_service("/net/connman/service/" + sys.argv[2], False)
-
-			# Terminate Agent
-			agent.terminate()
 
 		#
 		# Services
@@ -502,5 +522,8 @@ if __name__ == '__main__':
 			print "Error: Connman service is not currently running. Please enable Connman before using WiFi Manager!"
 		else:
 			print "%s: %s" % (error._dbus_error_name, error.message)
+		sys.exit()
+
+	except KeyboardInterrupt:
 		sys.exit()
 

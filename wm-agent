@@ -36,7 +36,7 @@ class Agent(dbus.service.Object):
 	def get_identity(self):
 		response = {}
 
-		if not self.identity:
+		if self.identity is None:
 			while 1:
 				identity = raw_input("Please enter identity: ")
 
@@ -54,19 +54,19 @@ class Agent(dbus.service.Object):
 	def get_passphrase(self):
 		response = {}
 
-		if not self.passphrase and not self.wpspin:
+		if self.passphrase is None and self.wpspin is None:
 			while 1:
 				passphrase = raw_input("Please enter passphrase: ")
 
 				if (len(passphrase) < 8):
-					print "\n** Passphrase must be longer than 8 characters. Please try again. **"
+					print "\n** Passphrase must be 8 or more characters long. Please try again. **"
 				else:
 					response["Passphrase"] = passphrase
 					break
 		else:
-			if self.passphrase:
+			if self.passphrase is not None:
 				response["Passphrase"] = self.passphrase
-			if self.wpspin:
+			if self.wpspin is not None:
 				response["WPS"] = self.wpspin
 			time.sleep(4)
 
@@ -75,7 +75,7 @@ class Agent(dbus.service.Object):
 	def get_username(self):
 		response = {}
 
-		if not self.username:
+		if self.username is None:
 			while 1:
 				username = raw_input("Please enter username: ")
 
@@ -93,7 +93,7 @@ class Agent(dbus.service.Object):
 	def get_password(self):
 		response = {}
 
-		if not self.password:
+		if self.password is None:
 			while 1:
 				password = raw_input("Please enter password: ")
 
@@ -111,7 +111,7 @@ class Agent(dbus.service.Object):
 	def get_name(self):
 		response = {}
 
-		if not self.name:
+		if self.name is None:
 			while 1:
 				name = raw_input("Please enter service name: ")
 
@@ -220,4 +220,3 @@ if __name__ == '__main__':
 		else:
 			print "%s: %s" % (error._dbus_error_name, error.message)
 		sys.exit()
-
