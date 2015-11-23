@@ -167,7 +167,10 @@ def attempt_connect_services(services):
 		
 	# Attempt service connection
 	for service in services:
-		print "Attempting to connect to " + service[1]["Name"] + "..."
+		if service[1]["Name"]:
+			print "Attempting to connect to " + service[1]["Name"] + "..."
+		else:
+			print "Attempting to connect to hidden access point..."
 
 		if connect_service(service[0], True):
 			print "\n Connected"
