@@ -26,6 +26,7 @@ class Agent(dbus.service.Object):
 	wpspin = None
 	username = None
 	password = None
+	interactive = True
 
 	@dbus.service.method("net.connman.Agent",
 					in_signature='', out_signature='')
@@ -36,6 +37,10 @@ class Agent(dbus.service.Object):
 	def get_identity(self):
 		response = {}
 
+		if self.identity is None and not self.interactive:
+			mainloop.quit()
+			return
+			
 		if self.identity is None:
 			while 1:
 				identity = raw_input("Please enter identity: ")
@@ -53,6 +58,10 @@ class Agent(dbus.service.Object):
 
 	def get_passphrase(self):
 		response = {}
+		
+		if self.passphrase is None and self.wpspin is None and not self.interactive:
+			mainloop.quit()
+			return
 
 		if self.passphrase is None and self.wpspin is None:
 			while 1:
@@ -75,6 +84,10 @@ class Agent(dbus.service.Object):
 	def get_username(self):
 		response = {}
 
+		if self.username is None and not self.interactive:
+			mainloop.quit()
+			return
+
 		if self.username is None:
 			while 1:
 				username = raw_input("Please enter username: ")
@@ -93,6 +106,10 @@ class Agent(dbus.service.Object):
 	def get_password(self):
 		response = {}
 
+		if self.password is None and not self.interactive:
+			mainloop.quit()
+			return
+
 		if self.password is None:
 			while 1:
 				password = raw_input("Please enter password: ")
@@ -110,6 +127,10 @@ class Agent(dbus.service.Object):
 
 	def get_name(self):
 		response = {}
+
+		if self.name is None and not self.interactive:
+			mainloop.quit()
+			return
 
 		if self.name is None:
 			while 1:
@@ -160,8 +181,12 @@ class Agent(dbus.service.Object):
 					in_signature='os',
 					out_signature='')
 	def ReportError(self, path, error):
-		print "ReportError %s, %s" % (path, error)
-		retry = raw_input("Retry service (yes/no): ")
+		if self.interactive:
+			print "ReportError %s, %s" % (path, error)
+			retry = raw_input("Retry service (yes/no): ")
+		else:
+			retry = "no"
+
 		if (retry == "yes"):
 			class Retry(dbus.DBusException):
 				_dbus_error_name = "net.connman.Agent.Error.Retry"
@@ -207,6 +232,9 @@ if __name__ == '__main__':
 					object.username = arg.replace("Username=", "", 1)
 				elif arg.startswith("Password="):
 					object.password = arg.replace("Password=", "", 1)
+				elif arg.startswith("Interactive="):
+					if arg.replace("Interactive=", "", 1) == "False":
+						object.interactive = False
 
 		manager.RegisterAgent(agent_id)
 

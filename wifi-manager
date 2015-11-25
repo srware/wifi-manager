@@ -27,6 +27,9 @@ TIMEOUT = 60000
 sys.stdout = codecs.getwriter('utf-8')(sys.stdout)
 
 def on_exit():
+	cleanup()
+
+def cleanup():
 	# Ensure agent gets killed
         if agent is not None:
 		agent.kill()
@@ -38,6 +41,7 @@ def on_exit():
 	# Remove PID file
 	if os.path.exists(PID_PATH):
 		os.remove(PID_PATH)
+	
 
 def get_hostname():
     	name_file = open('/etc/hostname', 'r')
@@ -84,8 +88,14 @@ def cycle_wifi():
 			return True
 	return False
 
-# Parses services for potential auto-connect candidates
-def get_auto_connect_services(services):
+def is_connected():
+	for path,properties in manager.GetTechnologies():
+		if properties["Type"] == "wifi":
+			technology = dbus.Interface(bus.get_object("net.connman", path), "net.connman.Technology")
+			return properties["Connected"] == dbus.Boolean(1)
+
+# Parses services to ensure they are suitable for JSON encoding
+def parse_services(services):
 
 	# Extract services which can be automatically connected or support WPS
 	parsedServices = []
@@ -99,18 +109,19 @@ def get_auto_connect_services(services):
 
 	return parsedServices
 
-# Parses services to ensure they are suitable for JSON encoding
-def parse_services(services):
+# Parses services for potential auto-connect candidates
+def get_auto_connect_services(services):
 
 	# Extract WiFi Services	
 	parsedServices = []
 	
 	for service in services:
-		if service[1]["AutoConnect"] == dbus.Boolean(1):
-			parsedServices.append(service)
+		if service[1]["Name"]:
+			if service[1]["AutoConnect"] == dbus.Boolean(1):
+				parsedServices.append(service)
 		
-		if "wps" in service[1]["Security"]:
-			parsedServices.append(service)
+			elif "wps" in service[1]["Security"]:
+				parsedServices.append(service)
 
 	return parsedServices
 
@@ -125,18 +136,19 @@ def scan_services():
 
 				# Retrieve services
 				services = manager.GetServices(timeout=20)
-				services = parse_services(services)
 
-				# Save to history
-				with open(SERVICE_HISTORY_PATH, 'w') as f:
-  					json.dump(services, f, skipkeys=True)
-					f.close()
+				if services:
+					services = parse_services(services)
+
+					# Save to history
+					with open(SERVICE_HISTORY_PATH, 'w') as f:
+	  					json.dump(services, f, skipkeys=True)
+						f.close()
 
 				return services
 
 			except dbus.DBusException, error:
 				if error.get_dbus_name() in ['org.freedesktop.DBus.Error.NoReply']:
-					print "Error: Unable to scan for services at this time. Please try again later."
 					return []
 
 def get_services():
@@ -147,47 +159,48 @@ def get_services():
 				services = json.load(f)
 				f.close() 
     				return services
+		else:
+			return []
 	
 	# Scan WiFi services and return as normal	
 	else:
 		return scan_services()
 
 
-def check_service(service):
+def check_service(services, path):
 	# Check service exists
-	services = get_services()
-	for path,properties in services:
-		if service in path:
-			return True
+	for service in services:
+		if path in service[0]:
+			return service
 
-	return False
+	return None
 
 def attempt_connect_services(services):
 	os.system('clear')
 		
 	# Attempt service connection
 	for service in services:
-		if service[1]["Name"]:
-			print "Attempting to connect to " + service[1]["Name"] + "..."
-		else:
-			print "Attempting to connect to hidden access point..."
+		print "Attempting to connect to " + service[1]["Name"] + "..."
 
-		if connect_service(service[0], True):
+		if connect_service(service, True):
 			print "\n Connected"
 			return True
 
 	return False
 
-def connect_service(path, quiet):
+def connect_service(service, quiet):
 	try:
-		current_service = dbus.Interface(bus.get_object("net.connman", path),
+		current_service = dbus.Interface(bus.get_object("net.connman", service[0]),
 						"net.connman.Service")
 		time.sleep(2)
 
 		# Attempt to connect service
 		if not quiet:
 			os.system('clear')
-			print "Attempting connection to service..."
+			if service[1]["Name"]:
+				print "Attempting to connect to " + service[1]["Name"] + "..."
+			else:
+				print "Attempting to connect to hidden access point..."
 
 		current_service.Connect(timeout=TIMEOUT)
 
@@ -199,6 +212,9 @@ def connect_service(path, quiet):
 		if error.get_dbus_name() in ['net.connman.Error.AlreadyConnected']:
 			if not quiet:
 				print "This service is already connected!"
+
+			current_service = None
+			return True
 		elif error.get_dbus_name() in ['net.connman.Error.InProgress']:
 			if not quiet:			
 				print "This service is in the process of connecting. Please try again later if not connected shortly."
@@ -214,6 +230,27 @@ def connect_service(path, quiet):
 
 		current_service = None
 		return False
+
+def disconnect_service():
+	# Get services			
+	services = get_services()
+
+	# Find non-idle services and disconnect them
+	for service in services:
+		if not service[1]["State"] == "idle":
+			service_interface = dbus.Interface(bus.get_object("net.connman", service[0]),
+						"net.connman.Service")
+			service_interface.Disconnect()
+
+			if service[1]["Name"]:
+				print "\nDisconnected from " + service[1]["Name"] + ".\n"
+			else:
+				print "Disconnected from hidden access point.\n"
+
+			return True
+
+	return False
+	
 
 def print_services(services):
 	os.system('clear')
@@ -377,13 +414,15 @@ def reload_edison_wifi_interface(tethering):
 def print_usage():
 	print "\nUsage:\n"
 	print "wifi-manager services: List available WiFi services."
+	print "\nwifi-manager autoconnect: Attempt to connect to open, associated or WPS capable access points (if any)."
 	print "\nwifi-manager connect [SERVICE_NAME]: Initialise connection to WiFi service."
 	print "\nFor EAP/WPA:"
 	print "wifi-manager connect [SERVICE_NAME] [Passphrase=<passphrase>]"
 	print "\nFor WISPr login, L2TP or PPTP:"
 	print "wifi-manager connect [SERVICE_NAME] [Username=<username>] [Password=<password>]"
+	print "\nwifi-manager disconnect: Disconnect active WiFi service (if any)."
 	print "\nwifi-manager tether [enable|disable|toggle]: Enable, disable or toggle WiFi tethering (AP Mode)."
-	print "\nwifi-manager help: Prints this usage guide.\n"
+	print "\nwifi-manager help: Prints this usage guide."
 	print "\nwifi-manager version: Display version.\n"
 	sys.exit()
 
@@ -429,7 +468,7 @@ if __name__ == '__main__':
 		# Auto Connect
 		#
 
-		if sys.argv[1] == "auto-connect":
+		if sys.argv[1] == "autoconnect":
 
 			# Make sure tethering is disabled
 			if is_tethering_enabled():
@@ -438,6 +477,11 @@ if __name__ == '__main__':
 
 			# Get list of suitable WiFi services
 			services = scan_services()
+
+			if not services:
+				print "Error: Unable to scan services at this time or no access points are in range. Please try again later."
+				sys.exit()
+
 			services = get_auto_connect_services(services)
 
 			if not services:
@@ -445,11 +489,11 @@ if __name__ == '__main__':
 				sys.exit()
 
 			# Register and populate agent
-			agent_args = "wm-agent WPS="
+			agent_args = "wm-agent Interactive=False WPS="
 			agent = subprocess.Popen(agent_args, stderr=DEVNULL, shell=True)
 
 			# Attempt to connect to services
-			TIMEOUT = 30
+			TIMEOUT = 60
 			if not attempt_connect_services(services):
 				print "\nUnable to auto connect to access point at this time!"
 
@@ -468,8 +512,17 @@ if __name__ == '__main__':
 				if not disable_tethering():
 					sys.exit()
 
+			# Get services			
+			services = get_services()
+			
+			if not services:
+				print "Error: Unable to scan services at this time or no access points are in range. Please try again later."
+				sys.exit()
+
 			# Check WiFi service exists
-			if not check_service(sys.argv[2]):
+			service = check_service(services, sys.argv[2])
+			
+			if service is None:
 				print "Error: Service doesn't exist!"
 				sys.exit()
 
@@ -477,14 +530,32 @@ if __name__ == '__main__':
 			agent_args = "wm-agent"
 
 			if len(sys.argv) > 3:
+				agent_args += " Interactive=False"
+
 				for arg in sys.argv[3:]:
 					agent_args += " " + arg
 			
 			agent = subprocess.Popen(agent_args, stderr=DEVNULL, shell=True)
 		
 			# Start service connection
-			connect_service("/net/connman/service/" + sys.argv[2], False)
+			connect_service(service, False)
 
+		#
+		# Disconnect
+		#
+
+		elif sys.argv[1] == "disconnect":
+
+			# Check if WiFi is connected
+			if not is_connected():
+				print "WiFi is not currently connected!"
+				sys.exit()
+
+			# Disconnect active services
+			disconnect_service()
+
+			
+			
 		#
 		# Services
 		#
@@ -492,7 +563,12 @@ if __name__ == '__main__':
 		elif sys.argv[1] == "services":
 
 			# Scan for WiFi services and print them on the console
-			print_services(get_services())
+			services = get_services()
+
+			if services:
+				print_services(services)
+			else:
+				print "\n Unable to scan services at this time or no access points are in range. Please try again later. \n"
 
 		#
 		# Tethering
