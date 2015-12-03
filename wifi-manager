@@ -548,7 +548,7 @@ if __name__ == '__main__':
 
 			# Check if WiFi is connected
 			if not is_connected():
-				print "WiFi is not currently connected!"
+				print "\nWiFi is not currently connected!\n"
 				sys.exit()
 
 			# Disconnect active services
