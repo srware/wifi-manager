@@ -3,7 +3,7 @@
 #
 # Written by Scott Ware
 #
-# Version 0.0.8
+# Version 0.0.9
 #
 
 import dbus
@@ -18,7 +18,7 @@ import subprocess
 import string
 import codecs
 
-VERSION = "0.0.8"
+VERSION = "0.0.9"
 SERVICE_HISTORY_PATH = "/etc/wifi-manager/services.json"
 PID_PATH = "/etc/wifi-manager/wm.pid"
 
