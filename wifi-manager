@@ -422,6 +422,7 @@ def disable_tethering():
 def reload_edison_wifi_interface(tethering):
 
 	# Reload WiFi driver in normal mode
+	disable_wifi()
 	result = subprocess.call("modprobe -r bcm4334x", shell=True)
 	if(result != 0):
 		print "Error: Unable to remove WiFi module."
@@ -442,10 +443,8 @@ def reload_edison_wifi_interface(tethering):
 
 	time.sleep(2)
 
-	# Cycle WiFi Interface
-	cycle_wifi()
-
-	return True
+	# Re-enable WiFi Interface
+	return check_wifi()
 
 def print_usage():
 	print "\nUsage:\n"
