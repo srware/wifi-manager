@@ -106,18 +106,6 @@ def init_wifi():
 				break
 
 	return enabled()
-		
-
-def cycle_wifi():
-	# Disable
-	if enabled():
-		for x in xrange(POWER_RETRIES):
-			disable_wifi()
-			
-			if not enabled():
-				break
-
-	return init_wifi()
 
 def connected():
 	for path,properties in manager.GetTechnologies():
@@ -177,7 +165,7 @@ def scan_services():
 				
 
 			except dbus.DBusException, error:
-				cycle_wifi()
+				init_wifi()
 				return[]
 
 def get_services():
@@ -224,6 +212,8 @@ def attempt_connect_services(services):
 		current_service = dbus.Interface(bus.get_object("net.connman", service[0]),
 						"net.connman.Service")
 
+		time.sleep(2)
+
 		if connect_service(True):
 			print "\n Connected"
 			return True
@@ -234,7 +224,7 @@ def connect_service(quiet):
 	global current_service
 
 	if not current_service:
-		return
+		return False
 
 	try:
 		# Attempt to connect service
@@ -363,7 +353,7 @@ def init_tethering():
 				technology.SetProperty("Tethering", dbus.Boolean(1))
 				return True
 			except dbus.DBusException, error:
-				cycle_wifi()
+				init_wifi()
 				return False
 
 	return False
@@ -457,7 +447,6 @@ def disable_tethering():
 def reload_edison_wifi_interface(tethering):
 
 	# Reload WiFi driver in normal mode
-	disable_wifi()
 	result = subprocess.call("modprobe -r bcm4334x", shell=True)
 	if(result != 0):
 		init_wifi()
@@ -616,6 +605,9 @@ if __name__ == '__main__':
 			# Start service connection
 			current_service = dbus.Interface(bus.get_object("net.connman", service[0]),
 						"net.connman.Service")
+
+			time.sleep(2)
+
 			connect_service(False)
 
 		#
