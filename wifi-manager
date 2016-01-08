@@ -22,8 +22,14 @@ VERSION = "0.0.9"
 SERVICE_HISTORY_PATH = "/etc/wifi-manager/services.json"
 PID_PATH = "/etc/wifi-manager/wm.pid"
 
+# Status Identifiers
+WM_STATUS_CONNECTED = 0
+WM_STATUS_ABORT = 1
+WM_STATUS_RETRY = 2
+
 TIMEOUT = 60000
-SCAN_RETRIES = 2
+SCAN_RETRIES = 5
+TETHER_RETRIES = 5
 POWER_RETRIES = 5
 
 sys.stdout = codecs.getwriter('utf-8')(sys.stdout)
@@ -90,7 +96,7 @@ def enabled():
 	
 	return False
 
-def check_wifi():
+def init_wifi():
 	# Attempt to enable wifi
 	if not enabled():
 		for x in xrange(POWER_RETRIES):
@@ -111,13 +117,7 @@ def cycle_wifi():
 			if not enabled():
 				break
 
-	# Enable
-	if not enabled():
-		for x in xrange(POWER_RETRIES):
-			enable_wifi()
-			
-			if enabled():
-				break
+	return init_wifi()
 
 def connected():
 	for path,properties in manager.GetTechnologies():
@@ -161,29 +161,24 @@ def scan_services():
 		if properties["Type"] == "wifi":
 			technology = dbus.Interface(bus.get_object("net.connman", path), "net.connman.Technology")
 
-			try:
-				# Scan for services
+			try:	
 				technology.Scan(timeout=20)
+				services = manager.GetServices(timeout=20)
+				services = parse_services(services)
 
-				# Retrieve services
-				for x in xrange(SCAN_RETRIES):
-					services = manager.GetServices(timeout=20)
-					services = parse_services(services)
-
-					if services:
-						break
-				
 				# Save to history
 				if services:
 					with open(SERVICE_HISTORY_PATH, 'w') as f:
 	  					json.dump(services, f, skipkeys=True)
 						f.close()
-
+				
 				return services
 
+				
+
 			except dbus.DBusException, error:
-				if error.get_dbus_name() in ['org.freedesktop.DBus.Error.NoReply']:
-					return []
+				cycle_wifi()
+				return[]
 
 def get_services():
 	# Get services from history if tethering is enabled
@@ -198,7 +193,15 @@ def get_services():
 	
 	# Scan WiFi services and return as normal	
 	else:
-		return scan_services()
+		# Retrieve services
+		for x in xrange(5):
+			services = scan_services()
+			
+			if services:
+				return services
+
+		return []
+			
 
 
 def check_service(services, path):
@@ -210,24 +213,30 @@ def check_service(services, path):
 	return None
 
 def attempt_connect_services(services):
+	global current_service
+
 	os.system('clear')
 		
 	# Attempt service connection
 	for service in services:
 		print "Attempting to connect to " + service[1]["Name"] + "..."
 
-		if connect_service(service, True):
+		current_service = dbus.Interface(bus.get_object("net.connman", service[0]),
+						"net.connman.Service")
+
+		if connect_service(True):
 			print "\n Connected"
 			return True
 
 	return False
 
-def connect_service(service, quiet):
-	try:
-		current_service = dbus.Interface(bus.get_object("net.connman", service[0]),
-						"net.connman.Service")
-		time.sleep(2)
+def connect_service(quiet):
+	global current_service
 
+	if not current_service:
+		return
+
+	try:
 		# Attempt to connect service
 		if not quiet:
 			os.system('clear')
@@ -241,6 +250,7 @@ def connect_service(service, quiet):
 		if not quiet:
 			print "\n Connected"
 
+		current_service = None
 		return True
 	except dbus.DBusException, error:
 		if error.get_dbus_name() in ['net.connman.Error.AlreadyConnected']:
@@ -258,6 +268,12 @@ def connect_service(service, quiet):
 		elif error.get_dbus_name() in ['net.connman.Error.InvalidArguments']:
 			if not quiet:
 				print "Unable to connect to the service with the details provided. Please try again."
+		elif error.get_dbus_name() in ['net.connman.Error.Failed']:
+			if not quiet:
+				print "Failed to connect to service."
+		elif error.get_dbus_name() in ['net.connman.Error.NotRegistered']:
+			if not quiet:
+				print "Unable to register with access point."
 		else:
 			if not quiet:
 				print "%s: %s" % (error._dbus_error_name, error.message)
@@ -267,7 +283,7 @@ def connect_service(service, quiet):
 
 def disconnect_service():
 	# Get services			
-	services = scan_services()
+	services = get_services()
 
 	# Find non-idle services and disconnect them
 	for service in services:
@@ -326,22 +342,7 @@ def toggle_tethering():
     	else:
 		enable_tethering()
 
-def enable_tethering():
-    	# Check tethering is not already enabled
-	if is_tethering_enabled():
-		print "Tethering is already enabled!"
-		return
-
-	# Save WiFi services to history
-	services = scan_services()
-
-	print "\n Enabling WiFi tethering...\n"
-
-	# Edison
-	if get_platform() is "edison":
-		if not reload_edison_wifi_interface(True):
-			return False
-
+def init_tethering():
 	technologies = manager.GetTechnologies()
 	for (path, properties) in technologies:
 		if properties["Type"] == "wifi":
@@ -360,37 +361,71 @@ def enable_tethering():
 			# Enable tethering
 			try:
 				technology.SetProperty("Tethering", dbus.Boolean(1))
+				return True
 			except dbus.DBusException, error:
-				if error.get_dbus_name() in ['net.connman.Error.NotSupported']:
-					print "Error: Unable to start WiFi tethering at this time. Please try again later."
-					# Reload WiFi interface in normal mode on Edison
-					if get_platform() is "edison":
-						reload_edison_wifi_interface(False)
-	
-					return False
-
-			time.sleep(2)
-
-			# Check the 'tether' interface has initialised
-			if not os.path.exists("/sys/class/net/tether"):
-				print "Error: WiFi tethering failed to start. Please try again later."
+				cycle_wifi()
 				return False
 
-			# Edison Fix
-			if get_platform() is "edison":
-
-				# FIXME: ConnMan will try to add wlan0 to tether bridge but in Edison
-				# that currently fails with EBUSY.
-				result = subprocess.call("brctl addif tether wlan0", shell=True)
-				if(result != 0):
-					print "Error: Unable to bridge wireless interface."
-					reload_edison_wifi_interface(False)
-					return False
-
-		    	print "Success"
-			return True
-
 	return False
+
+def enable_tethering():
+    	# Check tethering is not already enabled
+	if is_tethering_enabled():
+		print "Tethering is already enabled!"
+		return
+
+	# Save WiFi services to history
+	services = get_services()
+
+	print "\n Enabling WiFi tethering...\n"
+	
+	tethering_enabled = False
+
+	# Edison
+	if get_platform() is "edison":
+		if not reload_edison_wifi_interface(True):
+			print "Error: Unable to start WiFi tethering at this time. Please try again later."
+			return False
+
+	# Initialise tethering
+	for x in xrange(TETHER_RETRIES):
+		if init_tethering():
+			tethering_enabled = True
+			break
+
+		time.sleep(2)
+
+	if not tethering_enabled:
+		print "Error: Unable to start WiFi tethering at this time. Please try again later."
+
+		# Reload WiFi interface in normal mode on Edison
+		if get_platform() is "edison":
+			reload_edison_wifi_interface(False)
+		
+		get_services()
+		return False
+
+	time.sleep(2)
+
+	# Check the 'tether' interface has initialised
+	if not os.path.exists("/sys/class/net/tether"):
+		print "Error: WiFi tethering failed to start. Please try again later."
+		return False
+
+	# Edison Fix
+	if get_platform() is "edison":
+
+		# FIXME: ConnMan will try to add wlan0 to tether bridge but in Edison
+		# that currently fails with EBUSY.
+		result = subprocess.call("brctl addif tether wlan0", shell=True)
+		if(result != 0):
+			print "Error: Unable to bridge wireless interface."
+			reload_edison_wifi_interface(False)
+			get_services()
+			return False
+
+	print "Success"
+	return True
 
 def disable_tethering():
 
@@ -425,6 +460,7 @@ def reload_edison_wifi_interface(tethering):
 	disable_wifi()
 	result = subprocess.call("modprobe -r bcm4334x", shell=True)
 	if(result != 0):
+		init_wifi()
 		print "Error: Unable to remove WiFi module."
 		return False
 
@@ -443,8 +479,8 @@ def reload_edison_wifi_interface(tethering):
 
 	time.sleep(2)
 
-	# Re-enable WiFi Interface
-	return check_wifi()
+	# Re-initialise WiFi Interface
+	return init_wifi()
 
 def print_usage():
 	print "\nUsage:\n"
@@ -485,8 +521,8 @@ if __name__ == '__main__':
 		manager = dbus.Interface(bus.get_object('net.connman', "/"),
 					'net.connman.Manager')
 		
-		# Check WiFi
-		if not check_wifi():
+		# Initialise WiFi
+		if not init_wifi():
 			print "Error: WiFi not found on this device!"
 			sys.exit()
 
@@ -516,7 +552,7 @@ if __name__ == '__main__':
 					sys.exit()
 
 			# Get list of suitable WiFi services
-			services = scan_services()
+			services = get_services()
 
 			if not services:
 				print "Error: Unable to scan services at this time or no access points are in range. Please try again later."
@@ -553,7 +589,7 @@ if __name__ == '__main__':
 					sys.exit()
 
 			# Get services
-			services = scan_services()
+			services = get_services()
 			
 			if not services:
 				print "Error: Unable to scan services at this time or no access points are in range. Please try again later."
@@ -578,7 +614,9 @@ if __name__ == '__main__':
 			agent = subprocess.Popen(agent_args, stderr=DEVNULL, shell=True)
 		
 			# Start service connection
-			connect_service(service, False)
+			current_service = dbus.Interface(bus.get_object("net.connman", service[0]),
+						"net.connman.Service")
+			connect_service(False)
 
 		#
 		# Disconnect
