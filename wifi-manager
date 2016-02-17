@@ -17,6 +17,7 @@ import json
 import subprocess
 import string
 import codecs
+import curses
 
 VERSION = "0.0.10"
 SERVICE_HISTORY_PATH = "/etc/wifi-manager/services.json"
@@ -313,11 +314,75 @@ def print_services(services):
 		if "Name" in properties.keys():
 			name = properties["Name"]
 		else:
-			name = "{" + properties["Type"] + "}"
+			name = "Hidden Network"
 
 		print "%s%s %-26s %s" % (favorite, autoconnect, name, identifier)
 
 	print "\n"
+
+def services_menu(services):
+    curses.init_pair(1,curses.COLOR_RED, curses.COLOR_WHITE)
+    screen.keypad(1)
+    pos = 0
+    menu_offset = 5
+    x = None
+    h = curses.color_pair(1)
+    n = curses.A_NORMAL
+    while x != ord('\n'):
+	service = 0
+        screen.clear()
+        screen.border(0)
+        screen.addstr(2,2, "WiFi Services", curses.A_STANDOUT)
+        screen.addstr(4,2, "Please select a service to connect...", curses.A_BOLD)
+        # Add services to menu
+	for path, properties in services:
+		if "Name" in properties.keys():
+			name = properties["Name"]
+		else:
+			name = "Hidden Network"
+
+		if pos == service:
+		    screen.addstr((service + menu_offset),4, str(service + 1) + " - " + name,h)
+		else:
+		    screen.addstr((service + menu_offset),4, str(service + 1) + " - " + name,n)
+
+		service += 1
+
+	# Exit Option
+        if pos == (len(services) + 1):
+            screen.addstr((service + menu_offset),4, str(service + 1) + " - Exit",h)
+        else:
+            screen.addstr((service + menu_offset),4, str(service + 1) + " - Exit",n)
+
+        screen.refresh()
+
+	# Get user input
+        x = screen.getch()
+
+        # Service selected
+	for s in xrange(0, len(services) - 1:
+		if x == ord(str(s + 1)):
+			pos = s
+			break	
+
+	# Exit
+	if x == ord(str(len(services) + 1)):
+		pos = len(services) + 1
+
+        # Up Arrow
+        elif x == 258:
+            if pos < len(services):
+                pos += 1
+            else:
+                pos = 1
+        # Down Arrow
+        elif x == 259:
+            if pos > 0:
+                pos += -1
+            else:
+                pos = 5
+
+    return ord(str(pos))
 
 def is_tethering_enabled():
 	for path,properties in manager.GetTechnologies():
@@ -636,7 +701,8 @@ if __name__ == '__main__':
 			services = get_services()
 
 			if services:
-				print_services(services)
+				# print_services(services)
+				services_menu(services)
 			else:
 				print "\n Unable to scan services at this time or no access points are in range. Please try again later. \n"
 
