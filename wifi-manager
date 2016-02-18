@@ -70,8 +70,6 @@ def cleanup():
 	if menu_active:
 		curses.endwin()
 
-	sys.stdout = os.fdopen(0, 'w', 0)
-
 	# Remove PID file
 	if os.path.exists(PID_PATH):
 		os.remove(PID_PATH)
