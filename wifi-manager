@@ -47,10 +47,15 @@ def cleanup():
 	if current_service is not None:
 		current_service.Disconnect()
 
+	# Reset terminal to sane state
+	if menu_active:
+		curses.endwin()
+
+	sys.stdout = os.fdopen(0, 'w', 0)
+
 	# Remove PID file
 	if os.path.exists(PID_PATH):
 		os.remove(PID_PATH)
-	
 
 def get_hostname():
     	name_file = open('/etc/hostname', 'r')
@@ -321,7 +326,10 @@ def print_services(services):
 	print "\n"
 
 def services_menu(services):
+	global menu_active
+
     	screen = curses.initscr()
+	menu_active = True
 	curses.start_color()
     	curses.init_pair(1,curses.COLOR_RED, curses.COLOR_WHITE)
     	screen.keypad(1)
@@ -378,8 +386,9 @@ def services_menu(services):
 	# Cleanup
 	screen.keypad(0)
 	curses.endwin()
+	menu_active = False
 	os.system('clear')
-	sys.stdout = os.fdopen(0, 'w', 0)
+	sys.stdout = codecs.getwriter('utf-8')(sys.stdout)
 
 	if(pos == len(services)):
 		return None
@@ -571,6 +580,7 @@ if __name__ == '__main__':
 		agent = None
 		current_service = None
 		DEVNULL = open(os.devnull, 'wb')
+		menu_active = False
 
 		# Setup Connman DBus connection
 		bus = dbus.SystemBus()
