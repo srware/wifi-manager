@@ -407,7 +407,7 @@ def services_menu(services):
 	curses.endwin()
 	menu_active = False
 	os.system('clear')
-	sys.stdout = codecs.getwriter('utf-8')(sys.stdout)
+	sys.stdout = os.fdopen(0, 'w', 0)
 
 	if(pos == len(services)):
 		return None
